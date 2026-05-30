@@ -466,7 +466,7 @@ function addExcelSection(worksheet, startRow, title, items, includeSupplies) {
   const headers = includeSupplies
     ? ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "PRECINTOS", "TAGS", "CARRO", "ROLLO PAPEL BURBUJA", "VINIPEL", "SOBRES PAPEL BURBUJA X 10 UNIDADES", "OBSERVACIONES"]
     : ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "CARRO", "OBSERVACIONES", "Estado"];
-  worksheet.getRow(headerRow).values = [null, ...headers];
+  worksheet.getRow(headerRow).values = headers;
   worksheet.getRow(headerRow).height = 52;
   styleBlock(worksheet, headerRow, 1, headerRow, maxCol, {
     fill: "D0CECE",
@@ -485,7 +485,7 @@ function addExcelSection(worksheet, startRow, title, items, includeSupplies) {
     const row = includeSupplies
       ? [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.precintos, item.tags, item.carro, item.rollo, item.vinipel, item.sobres, item.observaciones]
       : [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.carro, item.observaciones, item.estado];
-    worksheet.getRow(currentRow).values = [null, ...row];
+    worksheet.getRow(currentRow).values = row;
     worksheet.getRow(currentRow).height = 42;
     styleBlock(worksheet, currentRow, 1, currentRow, maxCol, {
       fill: "FFFFFF",
