@@ -2,6 +2,7 @@ const state = {
   rawRows: [],
   deliveries: [],
   pickups: [],
+  previousNotes: new Map(),
 };
 
 const requiredColumns = [
@@ -33,11 +34,13 @@ const requiredColumns = [
 const deliveriesTable = document.getElementById("deliveriesTable");
 const pickupsTable = document.getElementById("pickupsTable");
 const fileInput = document.getElementById("fileInput");
+const previousRouteInput = document.getElementById("previousRouteInput");
 const generateRouteButton = document.getElementById("generateRoute");
 const downloadExcelButton = document.getElementById("downloadExcel");
 const downloadPdfButton = document.getElementById("downloadPdf");
 
 fileInput.addEventListener("change", readWorkbook);
+previousRouteInput.addEventListener("change", readPreviousRoute);
 generateRouteButton.addEventListener("click", generateRoute);
 downloadExcelButton.addEventListener("click", downloadExcel);
 downloadPdfButton.addEventListener("click", downloadPdf);
@@ -52,6 +55,30 @@ function normalizeUpper(value) {
 
 function isAllowedStatus(row) {
   return ["ALQUILER", "COMPRA"].includes(normalizeUpper(row["STATUS"]));
+}
+
+function matchKey(pedido, cliente) {
+  const cleanPedido = normalizeUpper(pedido);
+  const cleanCliente = normalizeUpper(cliente).replace(/\s+/g, " ");
+  return cleanPedido ? `${cleanPedido}||${cleanCliente}` : cleanCliente;
+}
+
+function pedidoKey(pedido) {
+  return normalizeUpper(pedido);
+}
+
+function applyPreviousNote(item) {
+  const exact = state.previousNotes.get(matchKey(item.pedido, item.cliente));
+  const byPedido = state.previousNotes.get(pedidoKey(item.pedido));
+  const byClient = state.previousNotes.get(matchKey("", item.cliente));
+  const note = exact || byPedido || byClient;
+
+  if (!note) return item;
+  return {
+    ...item,
+    observaciones: note.observaciones || item.observaciones,
+    estado: note.estado || item.estado,
+  };
 }
 
 function toNumber(value) {
@@ -113,6 +140,63 @@ async function readWorkbook(event) {
   generateRoute();
 }
 
+async function readPreviousRoute(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const bytes = await file.arrayBuffer();
+  const workbook = XLSX.read(bytes, { cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  state.previousNotes = extractPreviousNotes(rows);
+
+  if (!state.previousNotes.size) {
+    alert("No encontre observaciones o estados en la ruta anterior.");
+    return;
+  }
+
+  generateRoute();
+  alert(`Ruta anterior cargada. Se encontraron ${state.previousNotes.size} registros con observaciones o estado.`);
+}
+
+function extractPreviousNotes(rows) {
+  const notes = new Map();
+  let header = null;
+
+  rows.forEach((row) => {
+    const upperRow = row.map((value) => normalizeUpper(value));
+    const hasPedido = upperRow.includes("PEDIDO");
+    const hasCliente = upperRow.includes("CLIENTE");
+    const hasObservaciones = upperRow.includes("OBSERVACIONES") || upperRow.includes("OBS.");
+
+    if (hasPedido && hasCliente && hasObservaciones) {
+      header = {
+        pedido: upperRow.findIndex((value) => value === "PEDIDO"),
+        cliente: upperRow.findIndex((value) => value === "CLIENTE"),
+        observaciones: upperRow.findIndex((value) => value === "OBSERVACIONES" || value === "OBS."),
+        estado: upperRow.findIndex((value) => value === "ESTADO"),
+      };
+      return;
+    }
+
+    if (!header) return;
+
+    const pedido = normalize(row[header.pedido]);
+    const cliente = normalize(row[header.cliente]);
+    const observaciones = header.observaciones >= 0 ? normalize(row[header.observaciones]) : "";
+    const estado = header.estado >= 0 ? normalize(row[header.estado]) : "";
+
+    if ((!pedido && !cliente) || (!observaciones && !estado)) return;
+
+    const note = { observaciones, estado };
+    notes.set(matchKey(pedido, cliente), note);
+    if (pedido) notes.set(pedidoKey(pedido), note);
+    if (cliente) notes.set(matchKey("", cliente), note);
+  });
+
+  return notes;
+}
+
 function mapItem(row, type) {
   const isDelivery = type === "ENTREGA";
   return {
@@ -152,14 +236,14 @@ function generateRoute() {
     .filter((row) => normalize(row["COMBO"]))
     .filter((row) => isAllowedStatus(row))
     .filter((row) => !department || normalizeUpper(row["DEPARTAMENTO"]) === department)
-    .map((row) => mapItem(row, "ENTREGA"));
+    .map((row) => applyPreviousNote(mapItem(row, "ENTREGA")));
 
   state.pickups = state.rawRows
     .filter((row) => excelDateToIso(row["FECHA DE RECOGIDA"]) === selectedDate)
     .filter((row) => normalize(row["COMBO"]))
     .filter((row) => isAllowedStatus(row))
     .filter((row) => !department || normalizeUpper(row["DPTO RECOGIDA"]) === department)
-    .map((row) => mapItem(row, "RECOGIDA"));
+    .map((row) => applyPreviousNote(mapItem(row, "RECOGIDA")));
 
   document.getElementById("deliveryDateLabel").textContent = formatDateLabel(selectedDate);
   document.getElementById("pickupDateLabel").textContent = formatDateLabel(selectedDate);
@@ -212,7 +296,7 @@ function routeRows(item, number, includeSupplies) {
     : [number, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.carro, item.observaciones, item.estado];
   const span = includeSupplies ? 15 : 11;
   return `
-    <tr>${main.map((value, index) => `<td class="${cellClass(index, includeSupplies)} ${index === 4 ? "client" : ""}">${value}</td>`).join("")}</tr>
+    <tr>${main.map((value, index) => editableCell(value, index, includeSupplies, number - 1)).join("")}</tr>
     <tr class="address-row">
       <td class="label">DIRECCION:</td>
       <td colspan="${includeSupplies ? 4 : 4}">${item.direccion}</td>
@@ -224,6 +308,14 @@ function routeRows(item, number, includeSupplies) {
   `;
 }
 
+function editableCell(value, index, includeSupplies, itemIndex) {
+  const obsIndex = includeSupplies ? 14 : 9;
+  const estadoIndex = includeSupplies ? -1 : 10;
+  const field = index === obsIndex ? "observaciones" : index === estadoIndex ? "estado" : "";
+  const editable = field ? `contenteditable="true" data-field="${field}" data-index="${itemIndex}" data-section="${includeSupplies ? "deliveries" : "pickups"}"` : "";
+  return `<td ${editable} class="${cellClass(index, includeSupplies)} ${index === 4 ? "client" : ""} ${field ? "editable" : ""}">${value}</td>`;
+}
+
 function cellClass(index, includeSupplies) {
   if ([5, 7].includes(index)) return "blue";
   if (includeSupplies && [6, 8, 9].includes(index)) return "green";
@@ -233,7 +325,18 @@ function cellClass(index, includeSupplies) {
   return "";
 }
 
+function syncEditsFromTables() {
+  document.querySelectorAll("[contenteditable][data-field]").forEach((cell) => {
+    const section = cell.dataset.section;
+    const index = Number(cell.dataset.index);
+    const field = cell.dataset.field;
+    if (!state[section] || !state[section][index]) return;
+    state[section][index][field] = cell.textContent.trim();
+  });
+}
+
 async function downloadExcel() {
+  syncEditsFromTables();
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Ruta");
   worksheet.properties.defaultRowHeight = 24;
@@ -306,6 +409,7 @@ function paintRow(worksheet, rowNumber, maxCol, color, bold = false) {
 }
 
 function downloadPdf() {
+  syncEditsFromTables();
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "legal" });
   const dateLabel = formatDateLabel(document.getElementById("routeDate").value);

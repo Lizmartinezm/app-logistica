@@ -86,7 +86,7 @@ h1 {
 .controls {
   display: grid;
   gap: 14px;
-  grid-template-columns: 2fr 160px 180px 150px;
+  grid-template-columns: 2fr 2fr 160px 180px 150px;
   margin-top: 18px;
   padding: 18px;
 }
@@ -210,6 +210,16 @@ th {
 
 .client {
   font-weight: 800;
+}
+
+.editable {
+  background: #fffdf4;
+  outline: 2px solid transparent;
+  text-align: left;
+}
+
+.editable:focus {
+  outline-color: #1f7a3a;
 }
 
 .empty-state {
