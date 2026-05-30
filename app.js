@@ -1,0 +1,334 @@
+const state = {
+  rawRows: [],
+  deliveries: [],
+  pickups: [],
+};
+
+const requiredColumns = [
+  "STATUS",
+  "FECHA DE ENTREGA",
+  "FECHA DE RECOGIDA",
+  "#PEDIDO",
+  "NOMBRE",
+  "APELLIDO",
+  "TELEFONO",
+  "DIRECCIÓN DE FACTURACIÓN / ENTREGA",
+  "CIUDAD ENTREGA",
+  "DIRECCIÓN DE RECOGIDA",
+  "CIUDAD RECOGIDA",
+  "COMBO",
+  "CAJAS",
+  "CARRITO ",
+  "ROLLO PAPEL BURBUJA",
+  "SOBRES x10",
+  "VINIPEL",
+  "VERDES CNT40",
+  "PRECINTOS",
+  "TAGS",
+  "OBSERVACIONES",
+];
+
+const deliveriesTable = document.getElementById("deliveriesTable");
+const pickupsTable = document.getElementById("pickupsTable");
+const fileInput = document.getElementById("fileInput");
+const generateRouteButton = document.getElementById("generateRoute");
+const downloadExcelButton = document.getElementById("downloadExcel");
+const downloadPdfButton = document.getElementById("downloadPdf");
+
+fileInput.addEventListener("change", readWorkbook);
+generateRouteButton.addEventListener("click", generateRoute);
+downloadExcelButton.addEventListener("click", downloadExcel);
+downloadPdfButton.addEventListener("click", downloadPdf);
+
+function normalize(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeUpper(value) {
+  return normalize(value).toUpperCase();
+}
+
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function excelDateToIso(value) {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value)) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (!parsed) return "";
+    const date = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+    return date.toISOString().slice(0, 10);
+  }
+  const text = normalize(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+function formatDateLabel(value) {
+  if (!value) return "-";
+  const date = new Date(`${value}T00:00:00`);
+  return new Intl.DateTimeFormat("es-CO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+async function readWorkbook(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const bytes = await file.arrayBuffer();
+  const workbook = XLSX.read(bytes, { cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  const missing = requiredColumns.filter((column) => !(column in (rows[0] || {})));
+
+  if (missing.length) {
+    alert(`Al Excel le faltan estas columnas: ${missing.join(", ")}`);
+    return;
+  }
+
+  state.rawRows = rows;
+  generateRoute();
+}
+
+function mapItem(row, type) {
+  const isDelivery = type === "ENTREGA";
+  return {
+    type,
+    combo: normalize(row["COMBO"]),
+    cant: toNumber(row["CAJAS"]),
+    pedido: normalize(row["#PEDIDO"]),
+    cliente: `${normalize(row["NOMBRE"])} ${normalize(row["APELLIDO"])}`.trim(),
+    cnt30: "",
+    cnt40: toNumber(row["VERDES CNT40"]),
+    cnt40b: "",
+    precintos: toNumber(row["PRECINTOS"]),
+    tags: toNumber(row["TAGS"]),
+    carro: toNumber(row["CARRITO "]),
+    rollo: toNumber(row["ROLLO PAPEL BURBUJA"]),
+    vinipel: toNumber(row["VINIPEL"]),
+    sobres: toNumber(row["SOBRES x10"]),
+    direccion: normalize(row[isDelivery ? "DIRECCIÓN DE FACTURACIÓN / ENTREGA" : "DIRECCIÓN DE RECOGIDA"]),
+    ciudad: normalize(row[isDelivery ? "CIUDAD ENTREGA" : "CIUDAD RECOGIDA"]),
+    telefono: normalize(row["TELEFONO"]),
+    observaciones: normalize(row["OBSERVACIONES"]),
+    estado: "",
+  };
+}
+
+function generateRoute() {
+  if (!state.rawRows.length) {
+    renderEmpty();
+    return;
+  }
+
+  const selectedDate = document.getElementById("routeDate").value;
+  const city = normalizeUpper(document.getElementById("cityFilter").value);
+
+  state.deliveries = state.rawRows
+    .filter((row) => excelDateToIso(row["FECHA DE ENTREGA"]) === selectedDate)
+    .filter((row) => normalize(row["COMBO"]))
+    .filter((row) => normalizeUpper(row["STATUS"]) !== "EXTRA")
+    .filter((row) => !city || normalizeUpper(row["CIUDAD ENTREGA"]) === city)
+    .map((row) => mapItem(row, "ENTREGA"));
+
+  state.pickups = state.rawRows
+    .filter((row) => excelDateToIso(row["FECHA DE RECOGIDA"]) === selectedDate)
+    .filter((row) => normalize(row["COMBO"]))
+    .filter((row) => normalizeUpper(row["STATUS"]) !== "EXTRA")
+    .filter((row) => !city || normalizeUpper(row["CIUDAD RECOGIDA"]) === city)
+    .map((row) => mapItem(row, "RECOGIDA"));
+
+  document.getElementById("deliveryDateLabel").textContent = formatDateLabel(selectedDate);
+  document.getElementById("pickupDateLabel").textContent = formatDateLabel(selectedDate);
+  document.getElementById("deliveriesCount").textContent = state.deliveries.length;
+  document.getElementById("pickupsCount").textContent = state.pickups.length;
+  document.getElementById("totalCount").textContent = state.deliveries.length + state.pickups.length;
+
+  renderTable(deliveriesTable, state.deliveries, true);
+  renderTable(pickupsTable, state.pickups, false);
+  const hasResults = state.deliveries.length + state.pickups.length > 0;
+  downloadExcelButton.disabled = !hasResults;
+  downloadPdfButton.disabled = !hasResults;
+}
+
+function renderEmpty() {
+  deliveriesTable.innerHTML = `<tr><td class="empty-state">Sube tu base de datos Excel para generar entregas.</td></tr>`;
+  pickupsTable.innerHTML = `<tr><td class="empty-state">Sube tu base de datos Excel para generar recogidas.</td></tr>`;
+}
+
+function renderTable(table, items, includeSupplies) {
+  const headers = includeSupplies
+    ? ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "PRECINTOS", "TAGS", "CARRO", "ROLLO PAPEL BURBUJA", "VINIPEL", "SOBRES PAPEL BURBUJA X 10 UNIDADES", "OBSERVACIONES"]
+    : ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "CARRO", "OBSERVACIONES", "Estado"];
+
+  if (!items.length) {
+    table.innerHTML = `<tr><td class="empty-state">No hay registros para esta fecha y ciudad.</td></tr>`;
+    return;
+  }
+
+  table.innerHTML = `
+    <thead>
+      <tr>${headers.map((header, index) => `<th class="${headerClass(header, index)}">${header}</th>`).join("")}</tr>
+    </thead>
+    <tbody>
+      ${items.map((item, index) => routeRows(item, index + 1, includeSupplies)).join("")}
+    </tbody>
+  `;
+}
+
+function headerClass(header) {
+  if (header === "CNT30" || header === "CNT40") return "blue";
+  if (header === "PRECINTOS" || header === "TAGS") return "green";
+  if (["CARRO", "ROLLO PAPEL BURBUJA", "VINIPEL", "SOBRES PAPEL BURBUJA X 10 UNIDADES", "Estado"].includes(header)) return "yellow";
+  return "";
+}
+
+function routeRows(item, number, includeSupplies) {
+  const main = includeSupplies
+    ? [number, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.precintos, item.tags, item.carro, item.rollo, item.vinipel, item.sobres, item.observaciones]
+    : [number, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.carro, item.observaciones, item.estado];
+  const span = includeSupplies ? 15 : 11;
+  return `
+    <tr>${main.map((value, index) => `<td class="${cellClass(index, includeSupplies)} ${index === 4 ? "client" : ""}">${value}</td>`).join("")}</tr>
+    <tr class="address-row">
+      <td class="label">DIRECCION:</td>
+      <td colspan="${includeSupplies ? 4 : 4}">${item.direccion}</td>
+      <td class="label">CIUDAD:</td>
+      <td>${item.ciudad}</td>
+      <td class="label">TEL:</td>
+      <td colspan="${Math.max(span - 8, 1)}">${item.telefono}</td>
+    </tr>
+  `;
+}
+
+function cellClass(index, includeSupplies) {
+  if ([5, 7].includes(index)) return "blue";
+  if (includeSupplies && [6, 8, 9].includes(index)) return "green";
+  if (includeSupplies && index >= 10 && index <= 13) return "yellow";
+  if (!includeSupplies && [6].includes(index)) return "green";
+  if (!includeSupplies && [8, 10].includes(index)) return "yellow";
+  return "";
+}
+
+async function downloadExcel() {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Ruta");
+  worksheet.properties.defaultRowHeight = 24;
+  worksheet.pageSetup = { orientation: "landscape", paperSize: 5 };
+  const widths = [8, 11, 9, 12, 34, 9, 9, 9, 12, 11, 12, 18, 14, 22, 24];
+  worksheet.columns = widths.map((width) => ({ width }));
+
+  let rowNumber = addExcelSection(worksheet, 1, "PROGRAMACION DE ENTREGAS", state.deliveries, true);
+  addExcelSection(worksheet, rowNumber + 4, "PROGRAMACION DE RECOGIDAS", state.pickups, false);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAs(new Blob([buffer]), `programacion-rutas-${document.getElementById("routeDate").value}.xlsx`);
+}
+
+function addExcelSection(worksheet, startRow, title, items, includeSupplies) {
+  const maxCol = includeSupplies ? 15 : 11;
+  const dateLabel = formatDateLabel(document.getElementById("routeDate").value);
+  worksheet.mergeCells(startRow, 1, startRow, maxCol);
+  worksheet.getCell(startRow, 1).value = title;
+  paintRow(worksheet, startRow, maxCol, "8BD14F", true);
+
+  worksheet.getCell(startRow + 1, 1).value = "FECHA:";
+  worksheet.getCell(startRow + 1, 2).value = dateLabel;
+  worksheet.mergeCells(startRow + 1, 2, startRow + 1, maxCol);
+
+  const headers = includeSupplies
+    ? ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "PRECINTOS", "TAGS", "CARRO", "ROLLO PAPEL BURBUJA", "VINIPEL", "SOBRES PAPEL BURBUJA X 10 UNIDADES", "OBSERVACIONES"]
+    : ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "CARRO", "OBSERVACIONES", "Estado"];
+  worksheet.getRow(startRow + 3).values = [null, ...headers];
+  paintRow(worksheet, startRow + 3, maxCol, "D0CECE", true);
+
+  let currentRow = startRow + 4;
+  items.forEach((item, index) => {
+    const row = includeSupplies
+      ? [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.precintos, item.tags, item.carro, item.rollo, item.vinipel, item.sobres, item.observaciones]
+      : [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.carro, item.observaciones, item.estado];
+    worksheet.getRow(currentRow).values = [null, ...row];
+    worksheet.getCell(currentRow + 1, 1).value = "DIRECCION:";
+    worksheet.getCell(currentRow + 1, 2).value = item.direccion;
+    worksheet.mergeCells(currentRow + 1, 2, currentRow + 1, 5);
+    worksheet.getCell(currentRow + 1, 6).value = "CIUDAD:";
+    worksheet.getCell(currentRow + 1, 7).value = item.ciudad;
+    worksheet.getCell(currentRow + 1, 8).value = "TEL:";
+    worksheet.getCell(currentRow + 1, 9).value = item.telefono;
+    paintRow(worksheet, currentRow, maxCol, "FFFFFF", true);
+    paintRow(worksheet, currentRow + 1, maxCol, "FFFFFF", true);
+    currentRow += 2;
+  });
+
+  worksheet.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+  });
+  return currentRow;
+}
+
+function paintRow(worksheet, rowNumber, maxCol, color, bold = false) {
+  for (let column = 1; column <= maxCol; column += 1) {
+    const cell = worksheet.getCell(rowNumber, column);
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+    cell.font = { bold };
+  }
+}
+
+function downloadPdf() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "legal" });
+  const dateLabel = formatDateLabel(document.getElementById("routeDate").value);
+  let cursor = 32;
+
+  cursor = addPdfSection(doc, cursor, "PROGRAMACION DE ENTREGAS", dateLabel, state.deliveries, true);
+  addPdfSection(doc, cursor + 18, "PROGRAMACION DE RECOGIDAS", dateLabel, state.pickups, false);
+  doc.save(`programacion-rutas-${document.getElementById("routeDate").value}.pdf`);
+}
+
+function addPdfSection(doc, cursor, title, dateLabel, items, includeSupplies) {
+  doc.setFontSize(13);
+  doc.setFont(undefined, "bold");
+  doc.text(title, 36, cursor);
+  doc.setFontSize(9);
+  doc.text(`FECHA: ${dateLabel}`, 36, cursor + 18);
+
+  const headers = includeSupplies
+    ? ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT40", "PREC.", "TAGS", "CARRO", "ROLLO", "VINIPEL", "SOBRES", "OBS."]
+    : ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT40", "CARRO", "DIRECCION", "CIUDAD", "TEL", "OBS.", "ESTADO"];
+  const body = items.map((item, index) =>
+    includeSupplies
+      ? [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt40, item.precintos, item.tags, item.carro, item.rollo, item.vinipel, item.sobres, item.observaciones]
+      : [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt40, item.carro, item.direccion, item.ciudad, item.telefono, item.observaciones, item.estado],
+  );
+
+  doc.autoTable({
+    head: [headers],
+    body,
+    startY: cursor + 30,
+    styles: { fontSize: 6, cellPadding: 3, overflow: "linebreak" },
+    headStyles: { fillColor: [208, 206, 206], textColor: 20 },
+    theme: "grid",
+  });
+
+  return doc.lastAutoTable.finalY;
+}
+
+renderEmpty();
