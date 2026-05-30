@@ -87,7 +87,14 @@ async function readWorkbook(event) {
   if (!file) return;
   const bytes = await file.arrayBuffer();
   const workbook = XLSX.read(bytes, { cellDates: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const sheetName = workbook.SheetNames.find((name) => normalizeUpper(name) === "DATOS");
+
+  if (!sheetName) {
+    alert("El archivo Excel debe tener una hoja llamada DATOS.");
+    return;
+  }
+
+  const sheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   const missing = requiredColumns.filter((column) => !(column in (rows[0] || {})));
 
