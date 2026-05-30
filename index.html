@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>App Logistica</title>
-    <link rel="stylesheet" href="./styles.css?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
@@ -95,20 +95,47 @@
       </section>
 
       <section id="inventoryPanel" class="module-panel" hidden>
-        <div class="inventory-card">
-          <p class="eyebrow">Proximo modulo</p>
-          <h2>Control de inventario</h2>
-          <p>Esta seccion queda lista para construir entradas, salidas, existencias y alertas de inventario.</p>
-          <div class="inventory-grid">
-            <div><span>Cajas</span><strong>Por crear</strong></div>
-            <div><span>Carros</span><strong>Por crear</strong></div>
-            <div><span>Insumos</span><strong>Por crear</strong></div>
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Inventario</p>
+            <h2>Resumen diario de ingresos y egresos</h2>
+          </div>
+          <div class="actions">
+            <button id="downloadInventoryExcel" disabled>Descargar Excel</button>
+            <button id="downloadInventoryPdf" disabled>Descargar PDF</button>
           </div>
         </div>
+
+        <section class="controls inventory-controls">
+          <label>
+            Excel de rutas
+            <input id="inventoryRoutesInput" type="file" accept=".xlsx,.xls" multiple />
+          </label>
+          <button id="generateInventory">Generar inventario</button>
+        </section>
+
+        <section class="inventory-summary">
+          <div>
+            <span>Dias resumidos</span>
+            <strong id="inventoryDaysCount">0</strong>
+          </div>
+          <div>
+            <span>Total egresos CNT40</span>
+            <strong id="inventoryEgressCount">0</strong>
+          </div>
+          <div>
+            <span>Total ingresos CNT40</span>
+            <strong id="inventoryIncomeCount">0</strong>
+          </div>
+        </section>
+
+        <section class="inventory-table-wrap" id="inventoryPreview">
+          <table class="inventory-table" id="inventoryTable"></table>
+        </section>
       </section>
 
     </main>
 
-    <script src="./app.js?v=5"></script>
+    <script src="./app.js?v=6"></script>
   </body>
 </html>

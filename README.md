@@ -13,6 +13,8 @@ App web para generar programaciones de entregas y recogidas desde un archivo Exc
 - Descargar la ruta en Excel.
 - Descargar la ruta en PDF.
 - Cambiar entre el modulo de rutas y el modulo de inventario.
+- Generar resumen diario de inventario desde uno o varios Excel de rutas.
+- Descargar el resumen de inventario en Excel y PDF.
 
 ## Como usar
 

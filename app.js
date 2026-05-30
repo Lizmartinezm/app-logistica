@@ -3,6 +3,8 @@ const state = {
   deliveries: [],
   pickups: [],
   previousNotes: new Map(),
+  inventoryRouteFiles: [],
+  inventoryRows: [],
 };
 
 const requiredColumns = [
@@ -38,6 +40,11 @@ const previousRouteInput = document.getElementById("previousRouteInput");
 const generateRouteButton = document.getElementById("generateRoute");
 const downloadExcelButton = document.getElementById("downloadExcel");
 const downloadPdfButton = document.getElementById("downloadPdf");
+const inventoryRoutesInput = document.getElementById("inventoryRoutesInput");
+const generateInventoryButton = document.getElementById("generateInventory");
+const downloadInventoryExcelButton = document.getElementById("downloadInventoryExcel");
+const downloadInventoryPdfButton = document.getElementById("downloadInventoryPdf");
+const inventoryTable = document.getElementById("inventoryTable");
 
 document.querySelectorAll(".module-tab").forEach((tab) => {
   tab.addEventListener("click", () => switchPanel(tab.dataset.panel));
@@ -47,6 +54,10 @@ previousRouteInput.addEventListener("change", readPreviousRoute);
 generateRouteButton.addEventListener("click", generateRoute);
 downloadExcelButton.addEventListener("click", downloadExcel);
 downloadPdfButton.addEventListener("click", downloadPdf);
+inventoryRoutesInput.addEventListener("change", readInventoryRouteFiles);
+generateInventoryButton.addEventListener("click", generateInventory);
+downloadInventoryExcelButton.addEventListener("click", downloadInventoryExcel);
+downloadInventoryPdfButton.addEventListener("click", downloadInventoryPdf);
 
 function normalize(value) {
   return String(value ?? "").trim();
@@ -339,6 +350,311 @@ function renderEmpty() {
   pickupsTable.innerHTML = `<tr><td class="empty-state">Sube tu base de datos Excel para generar recogidas.</td></tr>`;
 }
 
+const inventoryHeaders = [
+  "FECHA",
+  "OPERACION",
+  "INGRESOS CNT40 VERDE",
+  "EGRESOS CNT40 VERDE",
+  "EGRESO PRECINTO",
+  "INGRESO TAG MARCACION",
+  "EGRESO TAG MARCACION",
+  "INGRESO CARRO",
+  "EGRESO CARRO",
+  "INGRESO PAPEL BURBUJA",
+  "EGRESO PAPEL BURBUJA",
+  "INGRESO VINIPEL",
+  "EGRESO VINIPEL",
+  "INGRESO SOBRES X 5 UNIDADES",
+  "EGRESO SOBRES X 5 UNIDADES",
+  "PEDIDO",
+  "NOMBRE",
+];
+
+function renderInventoryEmpty() {
+  inventoryTable.innerHTML = `<tr><td class="empty-state" colspan="${inventoryHeaders.length}">Sube uno o varios Excel de rutas para resumir el inventario.</td></tr>`;
+}
+
+function readInventoryRouteFiles(event) {
+  state.inventoryRouteFiles = [...event.target.files];
+  if (!state.inventoryRouteFiles.length) renderInventoryEmpty();
+}
+
+async function generateInventory() {
+  if (!state.inventoryRouteFiles.length) {
+    alert("Primero sube el Excel de rutas que quieres resumir.");
+    return;
+  }
+
+  const byDate = new Map();
+  for (const file of state.inventoryRouteFiles) {
+    const bytes = await file.arrayBuffer();
+    const workbook = XLSX.read(bytes, { cellDates: true });
+    workbook.SheetNames.forEach((sheetName) => {
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      collectInventoryFromRouteRows(rows, byDate);
+    });
+  }
+
+  state.inventoryRows = buildInventoryRows(byDate);
+  renderInventoryTable();
+  updateInventorySummary();
+}
+
+function getInventoryBucket(byDate, dateLabel) {
+  const displayDate = formatInventoryDate(dateLabel);
+  if (!displayDate) return null;
+  if (!byDate.has(displayDate)) {
+    byDate.set(displayDate, {
+      displayDate,
+      sortDate: inventorySortDate(displayDate),
+      ingreso: {},
+      egreso: {},
+    });
+  }
+  return byDate.get(displayDate);
+}
+
+function collectInventoryFromRouteRows(rows, byDate) {
+  rows.forEach((row, index) => {
+    const title = row.map(normalizeUpper).join(" ");
+    const isDeliverySection = title.includes("PROGRAMACION DE ENTREGAS");
+    const isPickupSection = title.includes("PROGRAMACION DE RECOGIDAS");
+    if (!isDeliverySection && !isPickupSection) return;
+
+    const dateLabel = extractRouteDate(rows[index + 1] || []);
+    const bucket = getInventoryBucket(byDate, dateLabel);
+    if (!bucket) return;
+
+    for (let rowIndex = index + 3; rowIndex < rows.length; rowIndex += 1) {
+      const dataRow = rows[rowIndex] || [];
+      const rowText = dataRow.map(normalizeUpper).join(" ");
+      if (rowText.includes("PROGRAMACION DE ENTREGAS") || rowText.includes("PROGRAMACION DE RECOGIDAS")) break;
+      if (!normalize(dataRow[0]) || normalizeUpper(dataRow[0]).includes("DIRECCION")) continue;
+      if (!Number.isFinite(Number(dataRow[0]))) continue;
+
+      if (isDeliverySection) {
+        addTo(bucket.egreso, "cnt40", toNumber(dataRow[6]));
+        addTo(bucket.egreso, "precintos", toNumber(dataRow[8]));
+        addTo(bucket.egreso, "tags", toNumber(dataRow[9]));
+        addTo(bucket.egreso, "carro", toNumber(dataRow[10]));
+        addTo(bucket.egreso, "papel", toNumber(dataRow[11]));
+        addTo(bucket.egreso, "vinipel", toNumber(dataRow[12]));
+        addTo(bucket.egreso, "sobres", toNumber(dataRow[13]));
+      } else {
+        addTo(bucket.ingreso, "cnt40", toNumber(dataRow[6]));
+        addTo(bucket.ingreso, "carro", toNumber(dataRow[8]));
+      }
+    }
+  });
+}
+
+function addTo(target, key, value) {
+  if (!value) return;
+  target[key] = (target[key] || 0) + value;
+}
+
+function extractRouteDate(row) {
+  const fechaIndex = row.findIndex((cell) => normalizeUpper(cell).startsWith("FECHA"));
+  if (fechaIndex >= 0) return row[fechaIndex + 1] || row[fechaIndex];
+  return row.find((cell) => normalize(cell) && !normalizeUpper(cell).startsWith("FECHA")) || "";
+}
+
+function formatInventoryDate(value) {
+  if (value instanceof Date && !Number.isNaN(value)) {
+    return `${value.getMonth() + 1}/${value.getDate()}/${value.getFullYear()}`;
+  }
+
+  const text = normalize(value).toLowerCase();
+  let match = text.match(/(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+(\d{4})/i);
+  if (match) {
+    const months = {
+      enero: 1,
+      febrero: 2,
+      marzo: 3,
+      abril: 4,
+      mayo: 5,
+      junio: 6,
+      julio: 7,
+      agosto: 8,
+      septiembre: 9,
+      setiembre: 9,
+      octubre: 10,
+      noviembre: 11,
+      diciembre: 12,
+    };
+    const month = months[match[2].normalize("NFD").replace(/[\u0300-\u036f]/g, "")];
+    if (month) return `${month}/${Number(match[1])}/${match[3]}`;
+  }
+
+  match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${Number(match[2])}/${Number(match[3])}/${match[1]}`;
+  match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) return `${Number(match[1])}/${Number(match[2])}/${match[3]}`;
+  return normalize(value);
+}
+
+function inventorySortDate(displayDate) {
+  const [month, day, year] = displayDate.split("/").map(Number);
+  if (!month || !day || !year) return displayDate;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function buildInventoryRows(byDate) {
+  return [...byDate.values()]
+    .sort((a, b) => String(a.sortDate).localeCompare(String(b.sortDate)))
+    .flatMap((day) => [
+      inventoryOperationRow(day.displayDate, "Egreso", day.egreso),
+      inventoryOperationRow(day.displayDate, "Ingreso", day.ingreso),
+    ]);
+}
+
+function inventoryOperationRow(date, operation, values) {
+  const ingreso = operation === "Ingreso";
+  return {
+    fecha: date,
+    operacion: operation,
+    ingresoCnt40: ingreso ? values.cnt40 || "" : "",
+    egresoCnt40: ingreso ? "" : values.cnt40 || "",
+    egresoPrecinto: ingreso ? "" : values.precintos || "",
+    ingresoTag: "",
+    egresoTag: ingreso ? "" : values.tags || "",
+    ingresoCarro: ingreso ? values.carro || "" : "",
+    egresoCarro: ingreso ? "" : values.carro || "",
+    ingresoPapel: "",
+    egresoPapel: ingreso ? "" : values.papel || "",
+    ingresoVinipel: "",
+    egresoVinipel: ingreso ? "" : values.vinipel || "",
+    ingresoSobres: "",
+    egresoSobres: ingreso ? "" : values.sobres || "",
+    pedido: "",
+    nombre: "",
+  };
+}
+
+function inventoryRowToArray(row) {
+  return [
+    row.fecha,
+    row.operacion,
+    row.ingresoCnt40,
+    row.egresoCnt40,
+    row.egresoPrecinto,
+    row.ingresoTag,
+    row.egresoTag,
+    row.ingresoCarro,
+    row.egresoCarro,
+    row.ingresoPapel,
+    row.egresoPapel,
+    row.ingresoVinipel,
+    row.egresoVinipel,
+    row.ingresoSobres,
+    row.egresoSobres,
+    row.pedido,
+    row.nombre,
+  ];
+}
+
+function renderInventoryTable() {
+  if (!state.inventoryRows.length) {
+    renderInventoryEmpty();
+    return;
+  }
+
+  inventoryTable.innerHTML = `
+    <thead>
+      <tr>${inventoryHeaders.map((header) => `<th>${header}</th>`).join("")}</tr>
+    </thead>
+    <tbody>
+      ${state.inventoryRows
+        .map((row) => `<tr>${inventoryRowToArray(row).map((value) => `<td>${value}</td>`).join("")}</tr>`)
+        .join("")}
+    </tbody>
+  `;
+}
+
+function updateInventorySummary() {
+  const dates = new Set(state.inventoryRows.map((row) => row.fecha));
+  const totalEgreso = state.inventoryRows.reduce((sum, row) => sum + toNumber(row.egresoCnt40), 0);
+  const totalIngreso = state.inventoryRows.reduce((sum, row) => sum + toNumber(row.ingresoCnt40), 0);
+  document.getElementById("inventoryDaysCount").textContent = dates.size;
+  document.getElementById("inventoryEgressCount").textContent = totalEgreso;
+  document.getElementById("inventoryIncomeCount").textContent = totalIngreso;
+  const hasRows = state.inventoryRows.length > 0;
+  downloadInventoryExcelButton.disabled = !hasRows;
+  downloadInventoryPdfButton.disabled = !hasRows;
+}
+
+async function downloadInventoryExcel() {
+  if (!state.inventoryRows.length) return;
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Inventario");
+  worksheet.views = [{ showGridLines: false, state: "frozen", ySplit: 1 }];
+  worksheet.columns = [18, 14, 16, 16, 14, 16, 16, 12, 12, 16, 16, 12, 12, 18, 18, 12, 18].map((width) => ({ width }));
+  worksheet.getRow(1).values = inventoryHeaders;
+  worksheet.getRow(1).height = 64;
+  state.inventoryRows.forEach((row, index) => {
+    worksheet.getRow(index + 2).values = inventoryRowToArray(row);
+    worksheet.getRow(index + 2).height = 24;
+  });
+  worksheet.autoFilter = { from: "A1", to: "Q1" };
+  styleInventoryExcel(worksheet, state.inventoryRows.length + 1);
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAs(new Blob([buffer]), "resumen-inventario.xlsx");
+}
+
+function styleInventoryExcel(worksheet, lastRow) {
+  for (let row = 1; row <= lastRow; row += 1) {
+    for (let col = 1; col <= inventoryHeaders.length; col += 1) {
+      const cell = worksheet.getCell(row, col);
+      cell.fill = solidFill("82DF91");
+      cell.border = {
+        top: { style: "thin", color: { argb: "FF111111" } },
+        left: { style: "thin", color: { argb: "FF111111" } },
+        bottom: { style: "thin", color: { argb: "FF111111" } },
+        right: { style: "thin", color: { argb: "FF111111" } },
+      };
+      cell.alignment = {
+        horizontal: row === 1 ? "center" : "left",
+        vertical: row === 1 ? "bottom" : "middle",
+        wrapText: true,
+      };
+      cell.font = { bold: row === 1, size: row === 1 ? 13 : 11, color: { argb: "FF000000" } };
+    }
+  }
+}
+
+async function downloadInventoryPdf() {
+  if (!state.inventoryRows.length) return;
+  const { jsPDF } = window.jspdf;
+  const source = document.getElementById("inventoryPreview");
+  const canvas = await html2canvas(source, {
+    backgroundColor: "#ffffff",
+    scale: 2,
+    width: source.scrollWidth,
+    height: source.scrollHeight,
+    windowWidth: Math.max(document.documentElement.clientWidth, source.scrollWidth),
+    windowHeight: Math.max(document.documentElement.clientHeight, source.scrollHeight),
+  });
+  const imgData = canvas.toDataURL("image/png");
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "legal" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 16;
+  const imgWidth = pageWidth - margin * 2;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  let heightLeft = imgHeight;
+  let position = margin;
+  doc.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+  heightLeft -= pageHeight - margin * 2;
+  while (heightLeft > 0) {
+    doc.addPage();
+    position = margin - (imgHeight - heightLeft);
+    doc.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight - margin * 2;
+  }
+  doc.save("resumen-inventario.pdf");
+}
+
 function renderTable(table, items, includeSupplies) {
   const headers = includeSupplies
     ? ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "PRECINTOS", "TAGS", "CARRO", "ROLLO PAPEL BURBUJA", "VINIPEL", "SOBRES PAPEL BURBUJA X 10 UNIDADES", "OBSERVACIONES"]
@@ -621,3 +937,4 @@ async function downloadPdf() {
 }
 
 renderEmpty();
+renderInventoryEmpty();
