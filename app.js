@@ -14,8 +14,10 @@ const requiredColumns = [
   "TELEFONO",
   "DIRECCIÓN DE FACTURACIÓN / ENTREGA",
   "CIUDAD ENTREGA",
+  "DEPARTAMENTO",
   "DIRECCIÓN DE RECOGIDA",
   "CIUDAD RECOGIDA",
+  "DPTO RECOGIDA",
   "COMBO",
   "CAJAS",
   "CARRITO ",
@@ -46,6 +48,10 @@ function normalize(value) {
 
 function normalizeUpper(value) {
   return normalize(value).toUpperCase();
+}
+
+function isAllowedStatus(row) {
+  return ["ALQUILER", "COMPRA"].includes(normalizeUpper(row["STATUS"]));
 }
 
 function toNumber(value) {
@@ -139,20 +145,20 @@ function generateRoute() {
   }
 
   const selectedDate = document.getElementById("routeDate").value;
-  const city = normalizeUpper(document.getElementById("cityFilter").value);
+  const department = normalizeUpper(document.getElementById("departmentFilter").value);
 
   state.deliveries = state.rawRows
     .filter((row) => excelDateToIso(row["FECHA DE ENTREGA"]) === selectedDate)
     .filter((row) => normalize(row["COMBO"]))
-    .filter((row) => normalizeUpper(row["STATUS"]) !== "EXTRA")
-    .filter((row) => !city || normalizeUpper(row["CIUDAD ENTREGA"]) === city)
+    .filter((row) => isAllowedStatus(row))
+    .filter((row) => !department || normalizeUpper(row["DEPARTAMENTO"]) === department)
     .map((row) => mapItem(row, "ENTREGA"));
 
   state.pickups = state.rawRows
     .filter((row) => excelDateToIso(row["FECHA DE RECOGIDA"]) === selectedDate)
     .filter((row) => normalize(row["COMBO"]))
-    .filter((row) => normalizeUpper(row["STATUS"]) !== "EXTRA")
-    .filter((row) => !city || normalizeUpper(row["CIUDAD RECOGIDA"]) === city)
+    .filter((row) => isAllowedStatus(row))
+    .filter((row) => !department || normalizeUpper(row["DPTO RECOGIDA"]) === department)
     .map((row) => mapItem(row, "RECOGIDA"));
 
   document.getElementById("deliveryDateLabel").textContent = formatDateLabel(selectedDate);
@@ -179,7 +185,7 @@ function renderTable(table, items, includeSupplies) {
     : ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "CARRO", "OBSERVACIONES", "Estado"];
 
   if (!items.length) {
-    table.innerHTML = `<tr><td class="empty-state">No hay registros para esta fecha y ciudad.</td></tr>`;
+    table.innerHTML = `<tr><td class="empty-state">No hay registros para esta fecha y departamento.</td></tr>`;
     return;
   }
 
