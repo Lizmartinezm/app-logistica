@@ -338,15 +338,15 @@ th {
 }
 
 .inventory-table th {
-  background: #82df91;
+  background: #82df91 !important;
   font-size: 16px;
   font-weight: 800;
   height: 64px;
   vertical-align: bottom;
 }
 
-.inventory-table td {
-  background: #ffffff;
+.inventory-table tbody td {
+  background: #ffffff !important;
 }
 
 .empty-state {
