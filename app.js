@@ -415,13 +415,21 @@ async function downloadExcel() {
   syncEditsFromTables();
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Ruta");
-  worksheet.properties.defaultRowHeight = 24;
-  worksheet.pageSetup = { orientation: "landscape", paperSize: 5 };
+  worksheet.views = [{ showGridLines: false }];
+  worksheet.properties.defaultRowHeight = 30;
+  worksheet.pageSetup = {
+    orientation: "landscape",
+    paperSize: 5,
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.2, right: 0.2, top: 0.25, bottom: 0.25, header: 0.1, footer: 0.1 },
+  };
   const widths = [8, 11, 9, 12, 34, 9, 9, 9, 12, 11, 12, 18, 14, 22, 24];
   worksheet.columns = widths.map((width) => ({ width }));
 
   let rowNumber = addExcelSection(worksheet, 1, "PROGRAMACION DE ENTREGAS", state.deliveries, true);
-  addExcelSection(worksheet, rowNumber + 4, "PROGRAMACION DE RECOGIDAS", state.pickups, false);
+  addExcelSection(worksheet, rowNumber + 3, "PROGRAMACION DE RECOGIDAS", state.pickups, false);
 
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer]), `programacion-rutas-${document.getElementById("routeDate").value}.xlsx`);
@@ -430,26 +438,66 @@ async function downloadExcel() {
 function addExcelSection(worksheet, startRow, title, items, includeSupplies) {
   const maxCol = includeSupplies ? 15 : 11;
   const dateLabel = formatDateLabel(document.getElementById("routeDate").value);
+  const headerRow = startRow + 2;
+  const firstItemRow = startRow + 3;
+
   worksheet.mergeCells(startRow, 1, startRow, maxCol);
   worksheet.getCell(startRow, 1).value = title;
-  paintRow(worksheet, startRow, maxCol, "8BD14F", true);
+  worksheet.getRow(startRow).height = 28;
+  styleBlock(worksheet, startRow, 1, startRow, maxCol, {
+    fill: "8BD14F",
+    bold: true,
+    size: 13,
+    horizontal: "center",
+  });
 
   worksheet.getCell(startRow + 1, 1).value = "FECHA:";
   worksheet.getCell(startRow + 1, 2).value = dateLabel;
   worksheet.mergeCells(startRow + 1, 2, startRow + 1, maxCol);
+  worksheet.getRow(startRow + 1).height = 30;
+  styleBlock(worksheet, startRow + 1, 1, startRow + 1, maxCol, {
+    fill: "FFFFFF",
+    bold: true,
+    size: 12,
+    horizontal: "left",
+  });
+  worksheet.getCell(startRow + 1, 2).font = { bold: true, italic: true, size: 12 };
 
   const headers = includeSupplies
     ? ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "PRECINTOS", "TAGS", "CARRO", "ROLLO PAPEL BURBUJA", "VINIPEL", "SOBRES PAPEL BURBUJA X 10 UNIDADES", "OBSERVACIONES"]
     : ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT30", "CNT40", "CNT40", "CARRO", "OBSERVACIONES", "Estado"];
-  worksheet.getRow(startRow + 3).values = [null, ...headers];
-  paintRow(worksheet, startRow + 3, maxCol, "D0CECE", true);
+  worksheet.getRow(headerRow).values = [null, ...headers];
+  worksheet.getRow(headerRow).height = 52;
+  styleBlock(worksheet, headerRow, 1, headerRow, maxCol, {
+    fill: "D0CECE",
+    bold: true,
+    size: 10,
+    horizontal: "center",
+  });
+  headers.forEach((header, index) => {
+    const column = index + 1;
+    const fill = excelHeaderFill(header);
+    if (fill) worksheet.getCell(headerRow, column).fill = solidFill(fill);
+  });
 
-  let currentRow = startRow + 4;
+  let currentRow = firstItemRow;
   items.forEach((item, index) => {
     const row = includeSupplies
       ? [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.precintos, item.tags, item.carro, item.rollo, item.vinipel, item.sobres, item.observaciones]
       : [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt30, item.cnt40, item.cnt40b, item.carro, item.observaciones, item.estado];
     worksheet.getRow(currentRow).values = [null, ...row];
+    worksheet.getRow(currentRow).height = 42;
+    styleBlock(worksheet, currentRow, 1, currentRow, maxCol, {
+      fill: "FFFFFF",
+      bold: true,
+      size: 10,
+      horizontal: "center",
+    });
+    row.forEach((_, cellIndex) => {
+      const fill = excelBodyFill(cellIndex, includeSupplies);
+      if (fill) worksheet.getCell(currentRow, cellIndex + 1).fill = solidFill(fill);
+    });
+
     worksheet.getCell(currentRow + 1, 1).value = "DIRECCION:";
     worksheet.getCell(currentRow + 1, 2).value = item.direccion;
     worksheet.mergeCells(currentRow + 1, 2, currentRow + 1, 5);
@@ -457,71 +505,119 @@ function addExcelSection(worksheet, startRow, title, items, includeSupplies) {
     worksheet.getCell(currentRow + 1, 7).value = item.ciudad;
     worksheet.getCell(currentRow + 1, 8).value = "TEL:";
     worksheet.getCell(currentRow + 1, 9).value = item.telefono;
-    paintRow(worksheet, currentRow, maxCol, "FFFFFF", true);
-    paintRow(worksheet, currentRow + 1, maxCol, "FFFFFF", true);
+    worksheet.mergeCells(currentRow + 1, 9, currentRow + 1, maxCol);
+    worksheet.getRow(currentRow + 1).height = 42;
+    styleBlock(worksheet, currentRow + 1, 1, currentRow + 1, maxCol, {
+      fill: "FFFFFF",
+      bold: true,
+      size: 10,
+      horizontal: "left",
+    });
+    [1, 6, 8].forEach((column) => {
+      worksheet.getCell(currentRow + 1, column).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
     currentRow += 2;
   });
 
-  worksheet.eachRow((row) => {
-    row.eachCell((cell) => {
-      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-      cell.border = {
-        top: { style: "thin" },
-        left: { style: "thin" },
-        bottom: { style: "thin" },
-        right: { style: "thin" },
-      };
+  if (!items.length) {
+    worksheet.mergeCells(firstItemRow, 1, firstItemRow + 1, maxCol);
+    worksheet.getCell(firstItemRow, 1).value = "No hay registros para esta fecha y departamento.";
+    worksheet.getRow(firstItemRow).height = 54;
+    styleBlock(worksheet, firstItemRow, 1, firstItemRow + 1, maxCol, {
+      fill: "FFFFFF",
+      size: 10,
+      horizontal: "center",
     });
-  });
+    currentRow = firstItemRow + 2;
+  }
+
   return currentRow;
 }
 
-function paintRow(worksheet, rowNumber, maxCol, color, bold = false) {
-  for (let column = 1; column <= maxCol; column += 1) {
-    const cell = worksheet.getCell(rowNumber, column);
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
-    cell.font = { bold };
+function solidFill(color) {
+  const argb = color.length === 6 ? `FF${color}` : color;
+  return { type: "pattern", pattern: "solid", fgColor: { argb } };
+}
+
+function thinBorder() {
+  return {
+    top: { style: "thin", color: { argb: "7A7A7A" } },
+    left: { style: "thin", color: { argb: "7A7A7A" } },
+    bottom: { style: "thin", color: { argb: "7A7A7A" } },
+    right: { style: "thin", color: { argb: "7A7A7A" } },
+  };
+}
+
+function styleBlock(worksheet, startRow, startCol, endRow, endCol, options = {}) {
+  for (let row = startRow; row <= endRow; row += 1) {
+    for (let col = startCol; col <= endCol; col += 1) {
+      const cell = worksheet.getCell(row, col);
+      cell.fill = solidFill(options.fill || "FFFFFF");
+      cell.font = {
+        bold: Boolean(options.bold),
+        italic: Boolean(options.italic),
+        size: options.size || 10,
+        color: { argb: "FF102033" },
+      };
+      cell.alignment = {
+        horizontal: options.horizontal || "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.border = thinBorder();
+    }
   }
 }
 
-function downloadPdf() {
-  syncEditsFromTables();
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "legal" });
-  const dateLabel = formatDateLabel(document.getElementById("routeDate").value);
-  let cursor = 32;
-
-  cursor = addPdfSection(doc, cursor, "PROGRAMACION DE ENTREGAS", dateLabel, state.deliveries, true);
-  addPdfSection(doc, cursor + 18, "PROGRAMACION DE RECOGIDAS", dateLabel, state.pickups, false);
-  doc.save(`programacion-rutas-${document.getElementById("routeDate").value}.pdf`);
+function excelHeaderFill(header) {
+  if (header === "CNT30" || header === "CNT40") return "BDD7EE";
+  if (header === "PRECINTOS" || header === "TAGS") return "A9D18E";
+  if (["CARRO", "ROLLO PAPEL BURBUJA", "VINIPEL", "SOBRES PAPEL BURBUJA X 10 UNIDADES", "Estado"].includes(header)) return "FFE699";
+  return "D0CECE";
 }
 
-function addPdfSection(doc, cursor, title, dateLabel, items, includeSupplies) {
-  doc.setFontSize(13);
-  doc.setFont(undefined, "bold");
-  doc.text(title, 36, cursor);
-  doc.setFontSize(9);
-  doc.text(`FECHA: ${dateLabel}`, 36, cursor + 18);
+function excelBodyFill(index, includeSupplies) {
+  if ([5, 7].includes(index)) return "BDD7EE";
+  if (includeSupplies && [6, 8, 9].includes(index)) return "A9D18E";
+  if (includeSupplies && index >= 10 && index <= 13) return "FFE699";
+  if (!includeSupplies && index === 6) return "A9D18E";
+  if (!includeSupplies && [8, 10].includes(index)) return "FFE699";
+  return "";
+}
 
-  const headers = includeSupplies
-    ? ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT40", "PREC.", "TAGS", "CARRO", "ROLLO", "VINIPEL", "SOBRES", "OBS."]
-    : ["No.", "COMBO", "CANT", "PEDIDO", "CLIENTE", "CNT40", "CARRO", "DIRECCION", "CIUDAD", "TEL", "OBS.", "ESTADO"];
-  const body = items.map((item, index) =>
-    includeSupplies
-      ? [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt40, item.precintos, item.tags, item.carro, item.rollo, item.vinipel, item.sobres, item.observaciones]
-      : [index + 1, item.combo, item.cant, item.pedido, item.cliente, item.cnt40, item.carro, item.direccion, item.ciudad, item.telefono, item.observaciones, item.estado],
-  );
-
-  doc.autoTable({
-    head: [headers],
-    body,
-    startY: cursor + 30,
-    styles: { fontSize: 6, cellPadding: 3, overflow: "linebreak" },
-    headStyles: { fillColor: [208, 206, 206], textColor: 20 },
-    theme: "grid",
+async function downloadPdf() {
+  syncEditsFromTables();
+  const { jsPDF } = window.jspdf;
+  const source = document.querySelector(".sheet-preview");
+  const canvas = await html2canvas(source, {
+    backgroundColor: "#ffffff",
+    scale: 2,
+    width: source.scrollWidth,
+    height: source.scrollHeight,
+    windowWidth: Math.max(document.documentElement.clientWidth, source.scrollWidth),
+    windowHeight: Math.max(document.documentElement.clientHeight, source.scrollHeight),
   });
+  const imgData = canvas.toDataURL("image/png");
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "legal" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 18;
+  const imgWidth = pageWidth - margin * 2;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  let heightLeft = imgHeight;
+  let position = margin;
 
-  return doc.lastAutoTable.finalY;
+  doc.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+  heightLeft -= pageHeight - margin * 2;
+
+  while (heightLeft > 0) {
+    doc.addPage();
+    position = margin - (imgHeight - heightLeft);
+    doc.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight - margin * 2;
+  }
+
+  doc.save(`programacion-rutas-${document.getElementById("routeDate").value}.pdf`);
 }
 
 renderEmpty();
