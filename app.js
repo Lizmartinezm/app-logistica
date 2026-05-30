@@ -606,7 +606,7 @@ function styleInventoryExcel(worksheet, lastRow) {
   for (let row = 1; row <= lastRow; row += 1) {
     for (let col = 1; col <= inventoryHeaders.length; col += 1) {
       const cell = worksheet.getCell(row, col);
-      cell.fill = solidFill("82DF91");
+      cell.fill = solidFill(row === 1 ? "82DF91" : "FFFFFF");
       cell.border = {
         top: { style: "thin", color: { argb: "FF111111" } },
         left: { style: "thin", color: { argb: "FF111111" } },

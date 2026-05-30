@@ -330,7 +330,6 @@ th {
 
 .inventory-table th,
 .inventory-table td {
-  background: #82df91;
   border: 1px solid #111111;
   color: #000000;
   font-size: 13px;
@@ -339,10 +338,15 @@ th {
 }
 
 .inventory-table th {
+  background: #82df91;
   font-size: 16px;
   font-weight: 800;
   height: 64px;
   vertical-align: bottom;
+}
+
+.inventory-table td {
+  background: #ffffff;
 }
 
 .empty-state {
