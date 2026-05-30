@@ -16,46 +16,75 @@
       <section class="toolbar">
         <div>
           <p class="eyebrow">Operacion logistica</p>
-          <h1>Programacion de rutas</h1>
+          <h1>App logistica</h1>
         </div>
-        <div class="actions">
-          <button id="downloadExcel" disabled>Descargar Excel</button>
-          <button id="downloadPdf" disabled>Descargar PDF</button>
+        <div class="module-tabs" aria-label="Modulos">
+          <button class="module-tab active" data-panel="routesPanel" type="button">Rutas</button>
+          <button class="module-tab" data-panel="inventoryPanel" type="button">Inventario</button>
         </div>
       </section>
 
-      <section class="controls">
-        <label>
-          Base de datos Excel
-          <input id="fileInput" type="file" accept=".xlsx,.xls" />
-        </label>
-        <label>
-          Ruta anterior opcional
-          <input id="previousRouteInput" type="file" accept=".xlsx,.xls" />
-        </label>
-        <label>
-          Fecha
-          <input id="routeDate" type="date" value="2026-06-01" />
-        </label>
-        <label>
-          Departamento
-          <input id="departmentFilter" type="text" value="CUNDINAMARCA" />
-        </label>
-        <button id="generateRoute">Generar ruta</button>
+      <section id="routesPanel" class="module-panel active">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Programacion</p>
+            <h2>Rutas de entregas y recogidas</h2>
+          </div>
+          <div class="actions">
+            <button id="downloadExcel" disabled>Descargar Excel</button>
+            <button id="downloadPdf" disabled>Descargar PDF</button>
+          </div>
+        </div>
+
+        <section class="controls">
+          <label>
+            Base de datos Excel
+            <input id="fileInput" type="file" accept=".xlsx,.xls" />
+          </label>
+          <label>
+            Ruta anterior opcional
+            <input id="previousRouteInput" type="file" accept=".xlsx,.xls" />
+          </label>
+          <label>
+            Fecha
+            <input id="routeDate" type="date" value="2026-06-01" />
+          </label>
+          <label>
+            Departamento
+            <select id="departmentFilter">
+              <option value="CUNDINAMARCA">CUNDINAMARCA</option>
+              <option value="ANTIOQUIA">ANTIOQUIA</option>
+            </select>
+          </label>
+          <button id="generateRoute">Generar ruta</button>
+        </section>
+
+        <section class="summary" id="summary">
+          <div>
+            <span>Entregas</span>
+            <strong id="deliveriesCount">0</strong>
+          </div>
+          <div>
+            <span>Recogidas</span>
+            <strong id="pickupsCount">0</strong>
+          </div>
+          <div>
+            <span>Total servicios</span>
+            <strong id="totalCount">0</strong>
+          </div>
+        </section>
       </section>
 
-      <section class="summary" id="summary">
-        <div>
-          <span>Entregas</span>
-          <strong id="deliveriesCount">0</strong>
-        </div>
-        <div>
-          <span>Recogidas</span>
-          <strong id="pickupsCount">0</strong>
-        </div>
-        <div>
-          <span>Total servicios</span>
-          <strong id="totalCount">0</strong>
+      <section id="inventoryPanel" class="module-panel">
+        <div class="inventory-card">
+          <p class="eyebrow">Proximo modulo</p>
+          <h2>Control de inventario</h2>
+          <p>Esta seccion queda lista para construir entradas, salidas, existencias y alertas de inventario.</p>
+          <div class="inventory-grid">
+            <div><span>Cajas</span><strong>Por crear</strong></div>
+            <div><span>Carros</span><strong>Por crear</strong></div>
+            <div><span>Insumos</span><strong>Por crear</strong></div>
+          </div>
         </div>
       </section>
 
@@ -76,6 +105,7 @@
           </div>
         </div>
       </section>
+
     </main>
 
     <script src="./app.js"></script>

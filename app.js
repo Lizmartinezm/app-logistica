@@ -6,22 +6,22 @@ const state = {
 };
 
 const requiredColumns = [
-  "STATUS",
+  "TIPO PEDIDO",
   "FECHA DE ENTREGA",
   "FECHA DE RECOGIDA",
   "#PEDIDO",
   "NOMBRE",
   "APELLIDO",
   "TELEFONO",
-  "DIRECCIÓN DE FACTURACIÓN / ENTREGA",
+  "DIRECCION ENTREGA",
   "CIUDAD ENTREGA",
   "DEPARTAMENTO",
-  "DIRECCIÓN DE RECOGIDA",
+  "DIRECCION RECOGIDA",
   "CIUDAD RECOGIDA",
   "DPTO RECOGIDA",
   "COMBO",
   "CAJAS",
-  "CARRITO ",
+  "CARRITO",
   "ROLLO PAPEL BURBUJA",
   "SOBRES x10",
   "VINIPEL",
@@ -39,6 +39,9 @@ const generateRouteButton = document.getElementById("generateRoute");
 const downloadExcelButton = document.getElementById("downloadExcel");
 const downloadPdfButton = document.getElementById("downloadPdf");
 
+document.querySelectorAll(".module-tab").forEach((tab) => {
+  tab.addEventListener("click", () => switchPanel(tab.dataset.panel));
+});
 fileInput.addEventListener("change", readWorkbook);
 previousRouteInput.addEventListener("change", readPreviousRoute);
 generateRouteButton.addEventListener("click", generateRoute);
@@ -53,8 +56,72 @@ function normalizeUpper(value) {
   return normalize(value).toUpperCase();
 }
 
-function isAllowedStatus(row) {
-  return ["ALQUILER", "COMPRA"].includes(normalizeUpper(row["STATUS"]));
+function normalizeHeader(value) {
+  return normalizeUpper(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function switchPanel(panelId) {
+  document.querySelectorAll(".module-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.panel === panelId);
+  });
+  document.querySelectorAll(".module-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === panelId);
+  });
+  document.querySelector(".sheet-preview").style.display = panelId === "routesPanel" ? "grid" : "none";
+}
+
+function isAllowedOrderType(row) {
+  return ["ALQUILER", "COMPRA"].includes(normalizeUpper(row["TIPO PEDIDO"]));
+}
+
+function normalizeExcelRows(rows) {
+  const aliases = {
+    "TIPO PEDIDO": ["TIPO PEDIDO"],
+    "FECHA DE ENTREGA": ["FECHA DE ENTREGA"],
+    "FECHA DE RECOGIDA": ["FECHA DE RECOGIDA"],
+    "#PEDIDO": ["#PEDIDO", "PEDIDO", "NUMERO PEDIDO"],
+    NOMBRE: ["NOMBRE"],
+    APELLIDO: ["APELLIDO"],
+    TELEFONO: ["TELEFONO", "TEL", "TEL."],
+    "DIRECCION ENTREGA": [
+      "DIRECCION DE FACTURACION / ENTREGA",
+      "DIRECCION DE FACTURACIÓN / ENTREGA",
+      "DIRECCIÓN DE FACTURACIÓN / ENTREGA",
+      "DIRECCION ENTREGA",
+    ],
+    "CIUDAD ENTREGA": ["CIUDAD ENTREGA"],
+    DEPARTAMENTO: ["DEPARTAMENTO", "DPTO ENTREGA"],
+    "DIRECCION RECOGIDA": ["DIRECCION DE RECOGIDA", "DIRECCIÓN DE RECOGIDA", "DIRECCION RECOGIDA"],
+    "CIUDAD RECOGIDA": ["CIUDAD RECOGIDA"],
+    "DPTO RECOGIDA": ["DPTO RECOGIDA", "DEPARTAMENTO RECOGIDA"],
+    COMBO: ["COMBO"],
+    CAJAS: ["CAJAS", "CANT", "CANTIDAD"],
+    CARRITO: ["CARRITO", "CARRITO "],
+    "ROLLO PAPEL BURBUJA": ["ROLLO PAPEL BURBUJA"],
+    "SOBRES x10": ["SOBRES x10", "SOBRES X10", "SOBRES PAPEL BURBUJA X 10 UNIDADES"],
+    VINIPEL: ["VINIPEL"],
+    "VERDES CNT40": ["VERDES CNT40", "CNT40"],
+    PRECINTOS: ["PRECINTOS"],
+    TAGS: ["TAGS"],
+    OBSERVACIONES: ["OBSERVACIONES", "OBS."],
+  };
+
+  return rows.map((row) => {
+    const sourceByHeader = {};
+    Object.keys(row).forEach((key) => {
+      sourceByHeader[normalizeHeader(key)] = key;
+    });
+
+    const normalizedRow = {};
+    Object.entries(aliases).forEach(([canonical, options]) => {
+      const sourceKey = options.map(normalizeHeader).map((option) => sourceByHeader[option]).find(Boolean);
+      normalizedRow[canonical] = sourceKey ? row[sourceKey] : "";
+    });
+    return normalizedRow;
+  });
 }
 
 function matchKey(pedido, cliente) {
@@ -89,19 +156,26 @@ function toNumber(value) {
 function excelDateToIso(value) {
   if (!value) return "";
   if (value instanceof Date && !Number.isNaN(value)) {
-    return value.toISOString().slice(0, 10);
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
   if (typeof value === "number") {
     const parsed = XLSX.SSF.parse_date_code(value);
     if (!parsed) return "";
-    const date = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
-    return date.toISOString().slice(0, 10);
+    return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
   }
+
   const text = normalize(value);
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) return `${match[3]}-${String(match[2]).padStart(2, "0")}-${String(match[1]).padStart(2, "0")}`;
+
   const date = new Date(text);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function formatDateLabel(value) {
@@ -128,7 +202,8 @@ async function readWorkbook(event) {
   }
 
   const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  const rows = normalizeExcelRows(rawRows);
   const missing = requiredColumns.filter((column) => !(column in (rows[0] || {})));
 
   if (missing.length) {
@@ -164,7 +239,7 @@ function extractPreviousNotes(rows) {
   let header = null;
 
   rows.forEach((row) => {
-    const upperRow = row.map((value) => normalizeUpper(value));
+    const upperRow = row.map((value) => normalizeHeader(value));
     const hasPedido = upperRow.includes("PEDIDO");
     const hasCliente = upperRow.includes("CLIENTE");
     const hasObservaciones = upperRow.includes("OBSERVACIONES") || upperRow.includes("OBS.");
@@ -210,11 +285,11 @@ function mapItem(row, type) {
     cnt40b: "",
     precintos: toNumber(row["PRECINTOS"]),
     tags: toNumber(row["TAGS"]),
-    carro: toNumber(row["CARRITO "]),
+    carro: toNumber(row["CARRITO"]),
     rollo: toNumber(row["ROLLO PAPEL BURBUJA"]),
     vinipel: toNumber(row["VINIPEL"]),
     sobres: toNumber(row["SOBRES x10"]),
-    direccion: normalize(row[isDelivery ? "DIRECCIÓN DE FACTURACIÓN / ENTREGA" : "DIRECCIÓN DE RECOGIDA"]),
+    direccion: normalize(row[isDelivery ? "DIRECCION ENTREGA" : "DIRECCION RECOGIDA"]),
     ciudad: normalize(row[isDelivery ? "CIUDAD ENTREGA" : "CIUDAD RECOGIDA"]),
     telefono: normalize(row["TELEFONO"]),
     observaciones: normalize(row["OBSERVACIONES"]),
@@ -234,14 +309,14 @@ function generateRoute() {
   state.deliveries = state.rawRows
     .filter((row) => excelDateToIso(row["FECHA DE ENTREGA"]) === selectedDate)
     .filter((row) => normalize(row["COMBO"]))
-    .filter((row) => isAllowedStatus(row))
+    .filter((row) => isAllowedOrderType(row))
     .filter((row) => !department || normalizeUpper(row["DEPARTAMENTO"]) === department)
     .map((row) => applyPreviousNote(mapItem(row, "ENTREGA")));
 
   state.pickups = state.rawRows
     .filter((row) => excelDateToIso(row["FECHA DE RECOGIDA"]) === selectedDate)
     .filter((row) => normalize(row["COMBO"]))
-    .filter((row) => isAllowedStatus(row))
+    .filter((row) => isAllowedOrderType(row))
     .filter((row) => !department || normalizeUpper(row["DPTO RECOGIDA"]) === department)
     .map((row) => applyPreviousNote(mapItem(row, "RECOGIDA")));
 
@@ -275,7 +350,7 @@ function renderTable(table, items, includeSupplies) {
 
   table.innerHTML = `
     <thead>
-      <tr>${headers.map((header, index) => `<th class="${headerClass(header, index)}">${header}</th>`).join("")}</tr>
+      <tr>${headers.map((header) => `<th class="${headerClass(header)}">${header}</th>`).join("")}</tr>
     </thead>
     <tbody>
       ${items.map((item, index) => routeRows(item, index + 1, includeSupplies)).join("")}
