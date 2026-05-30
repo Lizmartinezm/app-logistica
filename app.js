@@ -68,9 +68,10 @@ function switchPanel(panelId) {
     tab.classList.toggle("active", tab.dataset.panel === panelId);
   });
   document.querySelectorAll(".module-panel").forEach((panel) => {
-    panel.classList.toggle("active", panel.id === panelId);
+    const isActive = panel.id === panelId;
+    panel.classList.toggle("active", isActive);
+    panel.hidden = !isActive;
   });
-  document.querySelector(".sheet-preview").style.display = panelId === "routesPanel" ? "grid" : "none";
 }
 
 function isAllowedOrderType(row) {

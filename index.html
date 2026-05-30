@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>App Logistica</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
@@ -73,9 +73,27 @@
             <strong id="totalCount">0</strong>
           </div>
         </section>
+
+        <section class="sheet-preview">
+          <div class="route-section">
+            <div class="section-title">PROGRAMACION DE ENTREGAS</div>
+            <div class="date-row"><strong>FECHA:</strong><span id="deliveryDateLabel">-</span></div>
+            <div class="table-wrap">
+              <table id="deliveriesTable"></table>
+            </div>
+          </div>
+
+          <div class="route-section">
+            <div class="section-title">PROGRAMACION DE RECOGIDAS</div>
+            <div class="date-row"><strong>FECHA:</strong><span id="pickupDateLabel">-</span></div>
+            <div class="table-wrap">
+              <table id="pickupsTable"></table>
+            </div>
+          </div>
+        </section>
       </section>
 
-      <section id="inventoryPanel" class="module-panel">
+      <section id="inventoryPanel" class="module-panel" hidden>
         <div class="inventory-card">
           <p class="eyebrow">Proximo modulo</p>
           <h2>Control de inventario</h2>
@@ -88,26 +106,8 @@
         </div>
       </section>
 
-      <section class="sheet-preview">
-        <div class="route-section">
-          <div class="section-title">PROGRAMACION DE ENTREGAS</div>
-          <div class="date-row"><strong>FECHA:</strong><span id="deliveryDateLabel">-</span></div>
-          <div class="table-wrap">
-            <table id="deliveriesTable"></table>
-          </div>
-        </div>
-
-        <div class="route-section">
-          <div class="section-title">PROGRAMACION DE RECOGIDAS</div>
-          <div class="date-row"><strong>FECHA:</strong><span id="pickupDateLabel">-</span></div>
-          <div class="table-wrap">
-            <table id="pickupsTable"></table>
-          </div>
-        </div>
-      </section>
-
     </main>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=3"></script>
   </body>
 </html>

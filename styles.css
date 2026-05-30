@@ -138,6 +138,10 @@ h2 {
   display: none;
 }
 
+.module-panel[hidden] {
+  display: none !important;
+}
+
 .module-panel.active {
   display: block;
 }
