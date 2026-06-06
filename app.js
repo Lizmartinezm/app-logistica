@@ -355,6 +355,11 @@ const inventoryHeaders = [
   "OPERACION",
   "INGRESOS CNT40 VERDE",
   "EGRESOS CNT40 VERDE",
+  "INGRESO CNT40 AZUL",
+  "EGRESOS CNT40 AZUL",
+  "INGRESO EKOBOX",
+  "EGRESO EKOBOX",
+  "INGRESO PRECINTO",
   "EGRESO PRECINTO",
   "INGRESO TAG MARCACION",
   "EGRESO TAG MARCACION",
@@ -434,7 +439,8 @@ function collectInventoryFromRouteRows(rows, byDate) {
       if (!Number.isFinite(Number(dataRow[0]))) continue;
 
       if (isDeliverySection) {
-        addTo(bucket.egreso, "cnt40", toNumber(dataRow[6]));
+        addTo(bucket.egreso, "cnt40Verde", toNumber(dataRow[6]));
+        addTo(bucket.egreso, "cnt40Azul", toNumber(dataRow[7]));
         addTo(bucket.egreso, "precintos", toNumber(dataRow[8]));
         addTo(bucket.egreso, "tags", toNumber(dataRow[9]));
         addTo(bucket.egreso, "carro", toNumber(dataRow[10]));
@@ -442,7 +448,8 @@ function collectInventoryFromRouteRows(rows, byDate) {
         addTo(bucket.egreso, "vinipel", toNumber(dataRow[12]));
         addTo(bucket.egreso, "sobres", toNumber(dataRow[13]));
       } else {
-        addTo(bucket.ingreso, "cnt40", toNumber(dataRow[6]));
+        addTo(bucket.ingreso, "cnt40Verde", toNumber(dataRow[6]));
+        addTo(bucket.ingreso, "cnt40Azul", toNumber(dataRow[7]));
         addTo(bucket.ingreso, "carro", toNumber(dataRow[8]));
       }
     }
@@ -514,21 +521,26 @@ function inventoryOperationRow(date, operation, values) {
   return {
     fecha: date,
     operacion: operation,
-    ingresoCnt40: ingreso ? values.cnt40 || "" : "",
-    egresoCnt40: ingreso ? "" : values.cnt40 || "",
-    egresoPrecinto: ingreso ? "" : values.precintos || "",
-    ingresoTag: "",
-    egresoTag: ingreso ? "" : values.tags || "",
-    ingresoCarro: ingreso ? values.carro || "" : "",
-    egresoCarro: ingreso ? "" : values.carro || "",
-    ingresoPapel: "",
-    egresoPapel: ingreso ? "" : values.papel || "",
-    ingresoVinipel: "",
-    egresoVinipel: ingreso ? "" : values.vinipel || "",
-    ingresoSobres: "",
-    egresoSobres: ingreso ? "" : values.sobres || "",
-    pedido: "",
-    nombre: "",
+    ingresoCnt40Verde: ingreso ? values.cnt40Verde || 0 : 0,
+    egresoCnt40Verde: ingreso ? 0 : values.cnt40Verde || 0,
+    ingresoCnt40Azul: ingreso ? values.cnt40Azul || 0 : 0,
+    egresoCnt40Azul: ingreso ? 0 : values.cnt40Azul || 0,
+    ingresoEkobox: 0,
+    egresoEkobox: 0,
+    ingresoPrecinto: ingreso ? values.precintos || 0 : 0,
+    egresoPrecinto: ingreso ? 0 : values.precintos || 0,
+    ingresoTag: ingreso ? values.tags || 0 : 0,
+    egresoTag: ingreso ? 0 : values.tags || 0,
+    ingresoCarro: ingreso ? values.carro || 0 : 0,
+    egresoCarro: ingreso ? 0 : values.carro || 0,
+    ingresoPapel: ingreso ? values.papel || 0 : 0,
+    egresoPapel: ingreso ? 0 : values.papel || 0,
+    ingresoVinipel: ingreso ? values.vinipel || 0 : 0,
+    egresoVinipel: ingreso ? 0 : values.vinipel || 0,
+    ingresoSobres: ingreso ? values.sobres || 0 : 0,
+    egresoSobres: ingreso ? 0 : values.sobres || 0,
+    pedido: 0,
+    nombre: 0,
   };
 }
 
@@ -536,8 +548,13 @@ function inventoryRowToArray(row) {
   return [
     row.fecha,
     row.operacion,
-    row.ingresoCnt40,
-    row.egresoCnt40,
+    row.ingresoCnt40Verde,
+    row.egresoCnt40Verde,
+    row.ingresoCnt40Azul,
+    row.egresoCnt40Azul,
+    row.ingresoEkobox,
+    row.egresoEkobox,
+    row.ingresoPrecinto,
     row.egresoPrecinto,
     row.ingresoTag,
     row.egresoTag,
@@ -574,8 +591,8 @@ function renderInventoryTable() {
 
 function updateInventorySummary() {
   const dates = new Set(state.inventoryRows.map((row) => row.fecha));
-  const totalEgreso = state.inventoryRows.reduce((sum, row) => sum + toNumber(row.egresoCnt40), 0);
-  const totalIngreso = state.inventoryRows.reduce((sum, row) => sum + toNumber(row.ingresoCnt40), 0);
+  const totalEgreso = state.inventoryRows.reduce((sum, row) => sum + toNumber(row.egresoCnt40Verde) + toNumber(row.egresoCnt40Azul), 0);
+  const totalIngreso = state.inventoryRows.reduce((sum, row) => sum + toNumber(row.ingresoCnt40Verde) + toNumber(row.ingresoCnt40Azul), 0);
   document.getElementById("inventoryDaysCount").textContent = dates.size;
   document.getElementById("inventoryEgressCount").textContent = totalEgreso;
   document.getElementById("inventoryIncomeCount").textContent = totalIngreso;
@@ -589,14 +606,14 @@ async function downloadInventoryExcel() {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Inventario");
   worksheet.views = [{ showGridLines: false, state: "frozen", ySplit: 1 }];
-  worksheet.columns = [18, 14, 16, 16, 14, 16, 16, 12, 12, 16, 16, 12, 12, 18, 18, 12, 18].map((width) => ({ width }));
+  worksheet.columns = [18, 14, 16, 16, 16, 16, 14, 14, 16, 16, 16, 16, 12, 12, 16, 16, 12, 12, 18, 18, 12, 18].map((width) => ({ width }));
   worksheet.getRow(1).values = inventoryHeaders;
   worksheet.getRow(1).height = 64;
   state.inventoryRows.forEach((row, index) => {
     worksheet.getRow(index + 2).values = inventoryRowToArray(row);
     worksheet.getRow(index + 2).height = 24;
   });
-  worksheet.autoFilter = { from: "A1", to: "Q1" };
+  worksheet.autoFilter = { from: "A1", to: "V1" };
   styleInventoryExcel(worksheet, state.inventoryRows.length + 1);
   const buffer = await workbook.xlsx.writeBuffer();
   saveAs(new Blob([buffer]), "resumen-inventario.xlsx");
